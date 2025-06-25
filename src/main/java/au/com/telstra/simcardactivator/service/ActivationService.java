@@ -2,6 +2,9 @@ package au.com.telstra.simcardactivator.service;
 
 import au.com.telstra.simcardactivator.model.ActivationRequest;
 import au.com.telstra.simcardactivator.model.ActuatorResponse;
+import au.com.telstra.simcardactivator.model.ActivationRecord;
+import au.com.telstra.simcardactivator.repository.ActivationRecordRepository;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
@@ -9,33 +12,40 @@ import org.springframework.web.client.RestTemplate;
 @Service
 public class ActivationService {
 
-    private final String ACTUATOR_URL = "http://localhost:8444/actuate";
+    private static final String ACTUATOR_URL = "http://localhost:8444/actuate";
+
+    @Autowired
+    private ActivationRecordRepository repository;
 
     public boolean activateSim(ActivationRequest request) {
-        // Create a RestTemplate to make HTTP request
         RestTemplate restTemplate = new RestTemplate();
 
-        // Prepare JSON payload with just the ICCID
+        // Prepare JSON payload
         String payload = "{\"iccid\":\"" + request.getIccid() + "\"}";
-
-        // Set headers for JSON
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-
-        // Wrap the payload and headers into an HttpEntity
         HttpEntity<String> entity = new HttpEntity<>(payload, headers);
 
-        try {
-            // Make POST request to actuator service
-            ResponseEntity<ActuatorResponse> response = restTemplate.postForEntity(
-                    ACTUATOR_URL, entity, ActuatorResponse.class);
+        boolean success = false;
 
-            // Return true if activation was successful
-            return response.getBody() != null && response.getBody().isSuccess();
+        try {
+            ResponseEntity<ActuatorResponse> response = restTemplate.postForEntity(
+                    ACTUATOR_URL, entity, ActuatorResponse.class
+            );
+            success = response.getBody() != null && response.getBody().isSuccess();
 
         } catch (Exception e) {
             System.out.println("Error while calling actuator: " + e.getMessage());
-            return false;
         }
+
+        // Save activation result to DB
+        ActivationRecord record = new ActivationRecord(
+                request.getIccid(),
+                request.getCustomerEmail(),
+                success
+        );
+        repository.save(record);
+
+        return success;
     }
 }
